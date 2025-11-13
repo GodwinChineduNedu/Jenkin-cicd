@@ -37,24 +37,22 @@ pipeline {
                 }
             }
         }
-
-        stage('Build and Push Docker Image') {
-            agent any  // Run on Jenkins host where Docker CLI is available
-            environment {
-                DOCKER_IMAGE = "godwinchinedu/ultimate-cicd:${BUILD_NUMBER}"
-            }
-            steps {
-                withCredentials([usernamePassword(credentialsId: 'docker-cred', usernameVariable: 'DOCKER_USER', passwordVariable: 'DOCKER_PASS')]) {
-                    sh '''
-                        cd Jenkins-Zero-To-Hero/java-maven-sonar-argocd-helm-k8s/spring-boot-app
-                        docker build -t ${DOCKER_IMAGE} .
-                        docker login -u $DOCKER_USER -p $DOCKER_PASS
-                        docker push ${DOCKER_IMAGE}
-                    '''
-                }
-            }
+      stage('Build and Push Docker Image') {
+    agent any  // run on Jenkins host
+    environment {
+        DOCKER_IMAGE = "godwinchinedu/ultimate-cicd:${BUILD_NUMBER}"
+    }
+    steps {
+        withCredentials([usernamePassword(credentialsId: 'docker-cred', usernameVariable: 'DOCKER_USER', passwordVariable: 'DOCKER_PASS')]) {
+            sh '''
+                cd Jenkins-Zero-To-Hero/java-maven-sonar-argocd-helm-k8s/spring-boot-app
+                docker build -t ${DOCKER_IMAGE} .
+                docker login -u $DOCKER_USER -p $DOCKER_PASS
+                docker push ${DOCKER_IMAGE}
+            '''
         }
-
+    }
+}
         stage('Update Deployment File') {
             steps {
                 withCredentials([string(credentialsId: 'github', variable: 'GITHUB_TOKEN')]) {
