@@ -1,13 +1,9 @@
 pipeline {
-    agent {
-        docker {
-            image 'maven:3.8.6-openjdk-11'
-            args '--user root'
-        }
-    }
+    agent any  // Changed to run on Jenkins host directly
 
     environment {
         SONAR_URL = "http://100.27.24.90:9000/"
+        DOCKER_IMAGE = "godwinchinedu/ultimate-cicd:${BUILD_NUMBER}"
     }
 
     stages {
@@ -19,6 +15,13 @@ pipeline {
         }
 
         stage('Build and Test') {
+            agent {
+                docker {
+                    image 'maven:3.8.6-openjdk-11'
+                    args '--user root -v /root/.m2:/root/.m2'
+                    reuseNode true  // Use same workspace
+                }
+            }
             steps {
                 sh '''
                     cd Jenkins-Zero-To-Hero/java-maven-sonar-argocd-helm-k8s/spring-boot-app
@@ -28,6 +31,13 @@ pipeline {
         }
 
         stage('Static Code Analysis') {
+            agent {
+                docker {
+                    image 'maven:3.8.6-openjdk-11'
+                    args '--user root -v /root/.m2:/root/.m2'
+                    reuseNode true
+                }
+            }
             steps {
                 withCredentials([string(credentialsId: 'sonarqube', variable: 'SONAR_AUTH_TOKEN')]) {
                     sh '''
@@ -37,39 +47,61 @@ pipeline {
                 }
             }
         }
-      stage('Build and Push Docker Image') {
-    agent any  // run on Jenkins host
-    environment {
-        DOCKER_IMAGE = "godwinchinedu/ultimate-cicd:${BUILD_NUMBER}"
-    }
-    steps {
-        withCredentials([usernamePassword(credentialsId: 'docker-cred', usernameVariable: 'DOCKER_USER', passwordVariable: 'DOCKER_PASS')]) {
-            sh '''
-                cd Jenkins-Zero-To-Hero/java-maven-sonar-argocd-helm-k8s/spring-boot-app
-                docker build -t ${DOCKER_IMAGE} .
-                docker login -u $DOCKER_USER -p $DOCKER_PASS
-                docker push ${DOCKER_IMAGE}
-            '''
-        }
-    }
-}
-        stage('Update Deployment File') {
+
+        stage('Build and Push Docker Image') {
             steps {
-                withCredentials([string(credentialsId: 'github', variable: 'GITHUB_TOKEN')]) {
-                    sh '''
-                        git config --global user.email "godwinchinedunedu@gmail.com"
-                        git config --global user.name "GodwinChineduNedu"
-
-                        # Update image tag in deployment YAML
-                        sed -i -E "s/replaceImageTag/${BUILD_NUMBER}/g" Jenkins-Zero-To-Hero/java-maven-sonar-argocd-helm-k8s/spring-boot-app-manifests/deployment.yml
-
-                        git add --all
-                        git commit -m "Update deployment image to version ${BUILD_NUMBER}" || echo "No changes to commit"
-                        git push origin main || echo "Push failed"
-                    '''
+                script {
+                    withCredentials([usernamePassword(credentialsId: 'docker-cred', usernameVariable: 'DOCKER_USER', passwordVariable: 'DOCKER_PASS')]) {
+                        sh '''
+                            cd Jenkins-Zero-To-Hero/java-maven-sonar-argocd-helm-k8s/spring-boot-app
+                            docker build -t ${DOCKER_IMAGE} .
+                            echo $DOCKER_PASS | docker login -u $DOCKER_USER --password-stdin
+                            docker push ${DOCKER_IMAGE}
+                        '''
+                    }
                 }
             }
         }
 
+        stage('Update Deployment File') {
+            steps {
+                script {
+                    withCredentials([string(credentialsId: 'github', variable: 'GITHUB_TOKEN')]) {
+                        sh '''
+                            git config --global user.email "godwinchinedunedu@gmail.com"
+                            git config --global user.name "GodwinChineduNedu"
+
+                            # Update image tag in deployment YAML
+                            cd Jenkins-Zero-To-Hero/java-maven-sonar-argocd-helm-k8s/spring-boot-app-manifests
+                            sed -i "s|replaceImageTag|${BUILD_NUMBER}|g" deployment.yml
+                            
+                            # Check if there are changes
+                            if git diff --quiet; then
+                                echo "No changes to commit"
+                            else
+                                git add deployment.yml
+                                git commit -m "Update deployment image to version ${BUILD_NUMBER}"
+                                
+                                # Push using token authentication
+                                git push https://${GITHUB_TOKEN}@github.com/GodwinChineduNedu/Jenkin-cicd.git HEAD:main
+                            fi
+                        '''
+                    }
+                }
+            }
+        }
+
+    }
+
+    post {
+        always {
+            cleanWs()  // Clean workspace after build
+        }
+        success {
+            echo "Pipeline completed successfully!"
+        }
+        failure {
+            echo "Pipeline failed. Please check the logs."
+        }
     }
 }
