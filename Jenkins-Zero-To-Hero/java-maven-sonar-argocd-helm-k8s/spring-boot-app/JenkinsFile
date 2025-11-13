@@ -59,7 +59,7 @@ pipeline {
   BUILD_NUMBER=${BUILD_NUMBER}
   
   # Ensure sed modifies the file correctly
-  sed -i -E "s/replaceImageTag/${BUILD_NUMBER}/g"Jenkins-Zero-To-Hero/java-maven-sonar-argocd-helm-k8s/spring-boot-app-manifests/deployment.yml
+  sed -i -E "s/replaceImageTag/${BUILD_NUMBER}/g" Jenkins-Zero-To-Hero/java-maven-sonar-argocd-helm-k8s/spring-boot-app-manifests/deployment.yml
 
   # Check if file actually changed
   git status
@@ -107,22 +107,22 @@ pipeline {
         }
       }
     }
-    stage('Build and Push Docker Image') {
-      environment {
+   stage('Build and Push Docker Image') {
+    agent any
+    environment {
         DOCKER_IMAGE = "godwinchinedu/ultimate-cicd:${BUILD_NUMBER}"
-        // DOCKERFILE_LOCATION = "Jenkins-Zero-To-Hero/java-maven-sonar-argocd-helm-k8s/spring-boot-app/Dockerfile"
-        REGISTRY_CREDENTIALS = credentials('docker-cred')
-      }
-      steps {
-        script {
-          sh 'cd Jenkins-Zero-To-Hero/java-maven-sonar-argocd-helm-k8s/spring-boot-app && docker build -t ${DOCKER_IMAGE} .'
-          def dockerImage = docker.image("${DOCKER_IMAGE}")
-          docker.withRegistry('https://index.docker.io/v1/', "docker-cred") {
-            dockerImage.push()
-          }
-        }
-      }
     }
+    steps {
+        script {
+            sh '''
+            cd Jenkins-Zero-To-Hero/java-maven-sonar-argocd-helm-k8s/spring-boot-app
+            docker build -t ${DOCKER_IMAGE} .
+            docker login -u $DOCKER_USER -p $DOCKER_PASS
+            docker push ${DOCKER_IMAGE}
+            '''
+        }
+    }
+}
     stage('Update Deployment File') {
       environment {
         GIT_REPO_NAME = "Jenkins-Zero-To-Hero"
@@ -137,7 +137,7 @@ pipeline {
   BUILD_NUMBER=${BUILD_NUMBER}
   
   # Ensure sed modifies the file correctly
-  sed -i -E "s/replaceImageTag/${BUILD_NUMBER}/g" cd Jenkins-Zero-To-Hero/java-maven-sonar-argocd-helm-k8s/spring-boot-app-manifests/deployment.yml
+  sed -i -E "s/replaceImageTag/${BUILD_NUMBER}/g" Jenkins-Zero-To-Hero/java-maven-sonar-argocd-helm-k8s/spring-boot-app-manifests/deployment.yml
 
   # Check if file actually changed
   git status
